@@ -394,9 +394,9 @@
 
 <script>
 // ================================================================
-//  Gviz JSONP endpoint — supports cross-domain from GitHub Pages
+//  Google Visualization API — native CORS support, no proxy needed
 // ================================================================
-const GVIZ_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS3ukXVe6r_zq3HUS4DOhuZpcaKJvJ-ECHivEr8z0pxBSyS9DoFLzTF3znAJbLPAv-NEe1p01uukzHR/pub?output=csv";
+const GVIZ_URL = "https://docs.google.com/spreadsheets/d/1lzn5-zKsdKNwcPwcPqe4WIIn9IYWsSA-v124ErDZpYg/gviz/tq?tqx=out:json&sheet=Contacts";
 // ================================================================
 
 let allContacts = [];
@@ -497,67 +497,43 @@ function showError(msg) {
   </div>`;
 }
 
-function parseCSV(text) {
-  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim().split("\n");
-  const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim().toLowerCase());
-  return lines.slice(1).filter(l => l.trim()).map(line => {
-    const cols = [];
-    let cur = "", inQ = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') { inQ = !inQ; }
-      else if (ch === ',' && !inQ) { cols.push(cur); cur = ""; }
-      else { cur += ch; }
-    }
-    cols.push(cur);
+function parseGviz(json) {
+  const cols = json.table.cols.map(c => c.label.trim().toLowerCase());
+  return json.table.rows.map(row => {
     const obj = {};
-    headers.forEach((h, i) => { obj[h] = (cols[i] || "").replace(/^"|"$/g, "").trim(); });
+    cols.forEach((col, i) => {
+      obj[col] = (row.c[i] && row.c[i].v !== null) ? String(row.c[i].v).trim() : "";
+    });
     return obj;
   });
 }
 
-async function fetchWithProxy(proxyFn, rawUrl, timeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+async function loadContacts() {
   try {
-    const res = await fetch(proxyFn(rawUrl), { signal: controller.signal });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    const res = await fetch(GVIZ_URL, { signal: controller.signal });
     clearTimeout(timer);
     if (!res.ok) throw new Error("HTTP " + res.status);
-    return res;
+    const text = await res.text();
+    // Strip JSONP wrapper: /*O_o*/\ngoogle.visualization.Query.setResponse({...});
+    const jsonStr = text.replace(/^.*?setResponse\(/, "").replace(/\);\s*$/, "");
+    const json = JSON.parse(jsonStr);
+    if (json.status === "error") throw new Error(json.errors?.[0]?.message || "Sheet error");
+    const data = parseGviz(json);
+    allContacts = data.filter(c => c.name && c.phone);
+    if (allContacts.length === 0) throw new Error("Tidak ada kontak valid — pastikan sheet sudah di-share publik");
+    document.getElementById("skeleton").style.display = "none";
+    document.getElementById("directory").style.display = "block";
+    document.getElementById("total-count").textContent = `${allContacts.length} kontak`;
+    renderFilters(allContacts);
+    renderDirectory(allContacts);
   } catch(e) {
-    clearTimeout(timer);
-    throw e;
+    const msg = e.name === "AbortError"
+      ? "Koneksi timeout — coba refresh halaman"
+      : "Gagal memuat kontak — " + e.message;
+    showError(msg);
   }
-}
-
-async function loadContacts() {
-  const proxies = [
-    { name: "corsproxy",   fn: u => "https://corsproxy.io/?" + encodeURIComponent(u),           parse: r => r.text() },
-    { name: "allorigins",  fn: u => "https://api.allorigins.win/get?url=" + encodeURIComponent(u), parse: r => r.json().then(j => j.contents) },
-  ];
-
-  let lastErr = null;
-  for (const proxy of proxies) {
-    try {
-      const res = await fetchWithProxy(proxy.fn, GVIZ_URL, 10000);
-      const text = await proxy.parse(res);
-      if (!text || text.trim().length === 0) throw new Error("Response kosong");
-      const data = parseCSV(text);
-      allContacts = data.filter(c => c.name && c.phone);
-      if (allContacts.length === 0) throw new Error("Tidak ada kontak valid");
-      document.getElementById("skeleton").style.display = "none";
-      document.getElementById("directory").style.display = "block";
-      document.getElementById("total-count").textContent = `${allContacts.length} kontak`;
-      renderFilters(allContacts);
-      renderDirectory(allContacts);
-      return; // success — stop trying
-    } catch(e) {
-      lastErr = e;
-      // try next proxy
-    }
-  }
-  // all proxies failed
-  showError("Gagal memuat kontak — " + (lastErr ? lastErr.message : "coba refresh"));
 }
 
 document.getElementById("search").addEventListener("input", () => renderDirectory(allContacts));
