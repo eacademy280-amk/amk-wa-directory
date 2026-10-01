@@ -394,9 +394,9 @@
 
 <script>
 // ================================================================
-//  Sheet CSV URL — update this if you republish the sheet
+//  Gviz JSONP endpoint — supports cross-domain from GitHub Pages
 // ================================================================
-const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS3ukXVe6r_zq3HUS4DOhuZpcaKJvJ-ECHivEr8z0pxBSyS9DoFLzTF3znAJbLPAv-NEe1p01uukzHR/pub?output=csv";
+const GVIZ_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS3ukXVe6r_zq3HUS4DOhuZpcaKJvJ-ECHivEr8z0pxBSyS9DoFLzTF3znAJbLPAv-NEe1p01uukzHR/pub?output=csv";
 // ================================================================
 
 let allContacts = [];
@@ -498,40 +498,55 @@ function showError(msg) {
 }
 
 function parseCSV(text) {
-  const lines = text.trim().split("\n");
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim().split("\n");
   const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim().toLowerCase());
-  return lines.slice(1).map(line => {
+  return lines.slice(1).filter(l => l.trim()).map(line => {
     const cols = [];
     let cur = "", inQ = false;
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
       if (ch === '"') { inQ = !inQ; }
-      else if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = ""; }
+      else if (ch === ',' && !inQ) { cols.push(cur); cur = ""; }
       else { cur += ch; }
     }
-    cols.push(cur.trim());
+    cols.push(cur);
     const obj = {};
     headers.forEach((h, i) => { obj[h] = (cols[i] || "").replace(/^"|"$/g, "").trim(); });
     return obj;
   });
 }
 
-async function loadContacts() {
-  try {
-    const res = await fetch(SHEET_URL);
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const text = await res.text();
-    const data = parseCSV(text);
+function loadContacts() {
+  // Use JSONP via allorigins proxy to bypass CORS
+  const proxyURL = "https://api.allorigins.win/get?url=" + encodeURIComponent(GVIZ_URL);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
 
-    allContacts = data.filter(c => c.name && c.phone);
-    document.getElementById("skeleton").style.display = "none";
-    document.getElementById("directory").style.display = "block";
-    document.getElementById("total-count").textContent = `${allContacts.length} kontak`;
-    renderFilters(allContacts);
-    renderDirectory(allContacts);
-  } catch (e) {
-    showError("Gagal memuat kontak — " + e.message);
-  }
+  fetch(proxyURL, { signal: controller.signal })
+    .then(res => {
+      clearTimeout(timeout);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    })
+    .then(wrapper => {
+      const text = wrapper.contents;
+      if (!text || text.trim().length === 0) throw new Error("Sheet kosong atau tidak bisa diakses");
+      const data = parseCSV(text);
+      allContacts = data.filter(c => c.name && c.phone);
+      if (allContacts.length === 0) throw new Error("Tidak ada kontak valid di sheet");
+      document.getElementById("skeleton").style.display = "none";
+      document.getElementById("directory").style.display = "block";
+      document.getElementById("total-count").textContent = `${allContacts.length} kontak`;
+      renderFilters(allContacts);
+      renderDirectory(allContacts);
+    })
+    .catch(e => {
+      clearTimeout(timeout);
+      const msg = e.name === "AbortError"
+        ? "Koneksi timeout — coba refresh halaman"
+        : "Gagal memuat kontak — " + e.message;
+      showError(msg);
+    });
 }
 
 document.getElementById("search").addEventListener("input", () => renderDirectory(allContacts));
