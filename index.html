@@ -516,37 +516,48 @@ function parseCSV(text) {
   });
 }
 
-function loadContacts() {
-  // Use JSONP via allorigins proxy to bypass CORS
-  const proxyURL = "https://api.allorigins.win/get?url=" + encodeURIComponent(GVIZ_URL);
+async function fetchWithProxy(proxyFn, rawUrl, timeoutMs) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(proxyFn(rawUrl), { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res;
+  } catch(e) {
+    clearTimeout(timer);
+    throw e;
+  }
+}
 
-  fetch(proxyURL, { signal: controller.signal })
-    .then(res => {
-      clearTimeout(timeout);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      return res.json();
-    })
-    .then(wrapper => {
-      const text = wrapper.contents;
-      if (!text || text.trim().length === 0) throw new Error("Sheet kosong atau tidak bisa diakses");
+async function loadContacts() {
+  const proxies = [
+    { name: "corsproxy",   fn: u => "https://corsproxy.io/?" + encodeURIComponent(u),           parse: r => r.text() },
+    { name: "allorigins",  fn: u => "https://api.allorigins.win/get?url=" + encodeURIComponent(u), parse: r => r.json().then(j => j.contents) },
+  ];
+
+  let lastErr = null;
+  for (const proxy of proxies) {
+    try {
+      const res = await fetchWithProxy(proxy.fn, GVIZ_URL, 10000);
+      const text = await proxy.parse(res);
+      if (!text || text.trim().length === 0) throw new Error("Response kosong");
       const data = parseCSV(text);
       allContacts = data.filter(c => c.name && c.phone);
-      if (allContacts.length === 0) throw new Error("Tidak ada kontak valid di sheet");
+      if (allContacts.length === 0) throw new Error("Tidak ada kontak valid");
       document.getElementById("skeleton").style.display = "none";
       document.getElementById("directory").style.display = "block";
       document.getElementById("total-count").textContent = `${allContacts.length} kontak`;
       renderFilters(allContacts);
       renderDirectory(allContacts);
-    })
-    .catch(e => {
-      clearTimeout(timeout);
-      const msg = e.name === "AbortError"
-        ? "Koneksi timeout — coba refresh halaman"
-        : "Gagal memuat kontak — " + e.message;
-      showError(msg);
-    });
+      return; // success — stop trying
+    } catch(e) {
+      lastErr = e;
+      // try next proxy
+    }
+  }
+  // all proxies failed
+  showError("Gagal memuat kontak — " + (lastErr ? lastErr.message : "coba refresh"));
 }
 
 document.getElementById("search").addEventListener("input", () => renderDirectory(allContacts));
