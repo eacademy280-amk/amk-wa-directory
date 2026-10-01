@@ -233,9 +233,25 @@
   .card-role {
     font-size: 11px;
     color: var(--gray-400);
+    margin-bottom: 4px;
+    line-height: 1.4;
+  }
+  .card-address {
+    font-size: 11px;
+    color: var(--gray-400);
     margin-bottom: 12px;
     flex: 1;
     line-height: 1.4;
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .card-address svg {
+    width: 11px;
+    height: 11px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: var(--gray-400);
   }
   .wa-btn {
     display: flex;
@@ -380,7 +396,7 @@
 // ================================================================
 //  ⚠️  STEP 1: Replace the URL below with your Apps Script Web App URL
 // ================================================================
-const SHEET_URL = "https://script.google.com/macros/s/AKfycbz5jZLbLWrrB0lRTJ4C_KT5N03uYLbeQ7kgfNu01rJm02jLJqSian6-0Bt2tA0R_CZR3g/exec";
+const SHEET_URL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID_HERE/exec";
 // ================================================================
 
 let allContacts = [];
@@ -457,6 +473,7 @@ function renderDirectory(contacts) {
             <div class="avatar">${initials(c.name)}</div>
             <div class="card-name">${c.name}</div>
             <div class="card-role">${c.role || "&nbsp;"}</div>
+            ${c.address ? `<div class="card-address"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-8-7.5-8-13a8 8 0 0 1 16 0c0 5.5-8 13-8 13z"/><circle cx="12" cy="8" r="3"/></svg>${c.address}</div>` : ""}
             <a class="wa-btn" href="https://wa.me/${c.phone}" target="_blank" rel="noopener" aria-label="Chat with ${c.name} on WhatsApp">
               ${waIcon} Chat
             </a>
