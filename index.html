@@ -396,7 +396,7 @@
 // ================================================================
 //  ⚠️  STEP 1: Replace the URL below with your Apps Script Web App URL
 // ================================================================
-const SHEET_URL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID_HERE/exec";
+const SHEET_URL = "https://script.google.com/macros/s/AKfycbz5jZLbLWrrB0lRTJ4C_KT5N03uYLbeQ7kgfNu01rJm02jLJqSian6-0Bt2tA0R_CZR3g/exec";
 // ================================================================
 
 let allContacts = [];
@@ -499,7 +499,7 @@ function showError(msg) {
 
 async function loadContacts() {
   try {
-    if (SHEET_URL.includes("YOUR_SCRIPT_ID_HERE")) {
+    if (SHEET_URL.includes("https://script.google.com/macros/s/AKfycbz5jZLbLWrrB0lRTJ4C_KT5N03uYLbeQ7kgfNu01rJm02jLJqSian6-0Bt2tA0R_CZR3g/exec")) {
       showError("Sheet URL not configured yet");
       return;
     }
