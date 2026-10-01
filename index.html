@@ -517,7 +517,7 @@ async function loadContacts() {
     if (!res.ok) throw new Error("HTTP " + res.status);
     const text = await res.text();
     // Strip JSONP wrapper: /*O_o*/\ngoogle.visualization.Query.setResponse({...});
-    const jsonStr = text.replace(/^.*?setResponse\(/, "").replace(/\);\s*$/, "");
+    const jsonStr = text.split("setResponse(")[1].slice(0, -2);
     const json = JSON.parse(jsonStr);
     if (json.status === "error") throw new Error(json.errors?.[0]?.message || "Sheet error");
     const data = parseGviz(json);
